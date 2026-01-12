@@ -1,55 +1,85 @@
-import { Client, Collection, GatewayIntentBits, ActivityType } from "discord.js";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { Client, GatewayIntentBits, ActivityType, REST, Routes } from "discord.js";
+import fetch from "node-fetch";
+import "dotenv/config";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/* ===============================
+   CONFIG
+================================= */
+
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const COUNT_API = "https://api.countapi.xyz/get/fwmedot.github.io/fwme";
+
+/* ===============================
+   CLIENT
+================================= */
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
-  ]
+  intents: [GatewayIntentBits.Guilds]
 });
 
-client.commands = new Collection();
+/* ===============================
+   SLASH COMMAND
+================================= */
 
-// Cargar comandos
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".js"));
+const commands = [
+  {
+    name: "visitas",
+    description: "Muestra las visitas de fwme"
+  }
+];
 
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = await import(`file://${filePath}`);
-  client.commands.set(command.data.name, command);
-}
+const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+(async () => {
+  try {
+    await rest.put(
+      Routes.applicationCommands(CLIENT_ID),
+      { body: commands }
+    );
+    console.log("Comando /visitas registrado");
+  } catch (error) {
+    console.error(error);
+  }
+})();
+
+/* ===============================
+   READY
+================================= */
 
 client.once("ready", () => {
   console.log(`Bot conectado como ${client.user.tag}`);
 
-  client.user.setActivity("do u (F)Wme?", {
-    type: ActivityType.Listening
-  });
+  setInterval(async () => {
+    const res = await fetch(COUNT_API);
+    const data = await res.json();
+
+    client.user.setActivity(
+      `fwme — ${data.value} visits`,
+      { type: ActivityType.Watching }
+    );
+  }, 60_000);
 });
+
+/* ===============================
+   COMMAND HANDLER
+================================= */
 
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
+  if (interaction.commandName === "visitas") {
+    const res = await fetch(COUNT_API);
+    const data = await res.json();
 
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    await interaction.reply({
-      content: "Hubo un error al ejecutar el comando.",
-      ephemeral: true
-    });
+    await interaction.reply(
+      `👀 Visitas totales de fwme: **${data.value}**`
+    );
   }
 });
 
-client.login(process.env.TOKEN);
+/* ===============================
+   LOGIN
+================================= */
+
+client.login(TOKEN);
